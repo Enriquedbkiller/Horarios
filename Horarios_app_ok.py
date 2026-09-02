@@ -9,17 +9,45 @@ st.set_page_config(page_title="Generador de Horarios - City Market", layout="wid
 
 st.title("Generador de Horarios Oficial - City Market")
 
+# Cargar el catálogo de empleados automáticamente
+@st.cache_data
+def cargar_catalogo():
+    try:
+        df = pd.read_excel("catalogo empleados.xlsx")
+        return df
+    except Exception as e:
+        return None
+
+df_catalogo = cargar_catalogo()
+
+if df_catalogo is not None:
+    # Obtener lista única de departamentos y un diccionario de correspondencia
+    dept_df = df_catalogo[['Clave Departamento', 'Departamento']].drop_duplicates().reset_index(drop=True)
+    lista_departamentos = dept_df['Departamento'].tolist()
+else:
+    lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS"]
+
 # 1. Datos Generales
 st.subheader("1. Datos Generales")
 col1, col2, col3 = st.columns(3)
+
 with col1:
-    departamento = st.text_input("Nombre del Departamento", "LÁCTEOS / ABARROTES")
+    departamento_seleccionado = st.selectbox("Seleccione el Departamento", lista_departamentos)
+    
+    # Autocompletar el número de departamento según la selección
+    no_departamento = ""
+    if df_catalogo is not None:
+        match_dept = dept_df[dept_df['Departamento'] == departamento_seleccionado]
+        if not match_dept.empty:
+            no_departamento = str(match_dept.iloc[0]['Clave Departamento'])
+
 with col2:
-    no_departamento = st.text_input("Número de Departamento", "12")
+    # Campo de texto bloqueado o visible con el número automático
+    no_depto_input = st.text_input("Número de Departamento", value=no_departamento)
 with col3:
     fecha_entrega = st.date_input("Fecha de Entrega", datetime.today())
 
-# Horarios autorizados en formato de 24 horas (sin segundos)
+# Horarios autorizados en formato de 24 horas
 horarios_autorizados = [
     "Descanso",
     "Vacaciones",
@@ -55,9 +83,16 @@ st.subheader("2. Agregar Empleado al Horario")
 with st.form("form_empleado", clear_on_submit=True):
     c1, c2 = st.columns(2)
     with c1:
-        no_empleado = st.text_input("No. de Empleado")
+        no_empleado = st.text_input("No. de Empleado (Escribe y autocompleta el nombre)")
     with c2:
-        nombre_empleado = st.text_input("Nombre Completo")
+        # Buscar el nombre automáticamente si el número existe en el catálogo
+        nombre_sugerido = ""
+        if df_catalogo is not None and no_empleado:
+            match_emp = df_catalogo[df_catalogo['Empleado'].astype(str) == str(no_empleado).strip()]
+            if not match_emp.empty:
+                nombre_sugerido = str(match_emp.iloc[0]['Nombre'])
+        
+        nombre_empleado = st.text_input("Nombre Completo", value=nombre_sugerido)
         
     st.markdown("**Horarios Autorizados por Día (Miércoles a Martes)**")
     d1, d2, d3, d4, d5, d6, d7 = st.columns(7)
@@ -108,29 +143,26 @@ if st.session_state.empleados:
         wb = openpyxl.load_workbook(template_file)
         ws = wb['FORMATO ']
         
-        # Insertar Departamento (C4) y Número de Departamento (J4)
-        ws['C4'] = departamento
-        ws['J4'] = no_departamento
+        # Insertar Departamento y Número de Departamento
+        ws['C4'] = departamento_seleccionado
+        ws['J4'] = no_depto_input
         ws['C5'] = str(fecha_entrega)
         
         start_row = 9
         for idx, emp in enumerate(st.session_state.empleados):
             row_num = start_row + idx
             
-            # Si se necesitan más filas, insertamos una nueva fila respetando el formato de abajo
-            if row_num >= 23: # Antes de las firmas instituidas
+            if row_num >= 23:
                 ws.insert_rows(row_num)
             
             ws.cell(row=row_num, column=2, value=emp["No. Empleado"])
             ws.cell(row=row_num, column=3, value=emp["Nombre Completo"])
             
-            # Días de la semana (columnas D a J -> Índices 4 a 10)
             dias_keys = ["Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Lunes", "Martes"]
             for col_idx, d_key in enumerate(dias_keys, start=4):
                 val_horario = emp[d_key]
                 cell = ws.cell(row=row_num, column=col_idx, value=val_horario)
                 
-                # Si el turno es Descanso o Vacaciones, aplicamos negrita y tamaño más grande
                 if val_horario in ["Descanso", "Vacaciones"]:
                     cell.font = Font(name="Calibri", size=12, bold=True, color="FF000000")
                     cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -149,7 +181,7 @@ if st.session_state.empleados:
         st.download_button(
             label="📥 Descargar Horario Rellenado (Excel)",
             data=output,
-            file_name=f"Horario_{departamento}.xlsx",
+            file_name=f"Horario_{departamento_seleccionado}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         
