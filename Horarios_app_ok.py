@@ -31,6 +31,7 @@ def cargar_catalogo():
     try:
         df = pd.read_excel("catalogo empleados.xlsx")
         df['Empleado'] = df['Empleado'].astype(str).str.strip().str.replace('.0', '', regex=False)
+        df['Nombre'] = df['Nombre'].astype(str).str.strip()
         return df
     except Exception as e:
         return None
@@ -40,8 +41,11 @@ df_catalogo = cargar_catalogo()
 if df_catalogo is not None:
     dept_df = df_catalogo[['Clave Departamento', 'Departamento']].drop_duplicates().reset_index(drop=True)
     lista_departamentos = dept_df['Departamento'].tolist()
+    # Lista de nombres ordenados para el buscador
+    lista_nombres = sorted(df_catalogo['Nombre'].unique().tolist())
 else:
     lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "RECURSOS HUMANOS"]
+    lista_nombres = []
 
 hoy = datetime.today().date()
 dias_hasta_miercoles = (2 - hoy.weekday()) % 7
@@ -143,33 +147,35 @@ def calcular_sugerencia_comida(horario_str):
     except:
         return "14:00 - 15:00"
 
-# 2. Gestión de Empleados (Fuera de form para permitir precarga fluida)
+# 2. Gestión de Empleados (Búsqueda por Nombre con autocompletado de Número)
 st.subheader("2. Agregar o Modificar Empleado")
 
-c1, c2, c3 = st.columns([1, 2, 1])
+c1, c2, c3 = st.columns([2, 1, 1])
+
 with c1:
-    no_empleado = st.text_input("No. de Empleado")
+    # Selector con opción de búsqueda nativa al escribir
+    nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres)
+
+# Buscar datos del empleado seleccionado
+no_empleado_sugerido = ""
+empleado_existente_datos = None
+
+if nombre_seleccionado != "-- Seleccione o escriba un nombre --":
+    # 1. Buscar número en el catálogo
+    if df_catalogo is not None:
+        match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
+        if not match_cat.empty:
+            no_empleado_sugerido = str(match_cat.iloc[0]['Empleado'])
+            
+    # 2. Buscar si ya tiene horario guardado en la tabla de este departamento para precargarlo
+    for emp in st.session_state.empleados:
+        if emp["Nombre Completo"] == nombre_seleccionado:
+            empleado_existente_datos = emp
+            no_empleado_sugerido = str(emp["No. Empleado"])
+            break
 
 with c2:
-    nombre_sugerido = ""
-    empleado_existente_datos = None
-    
-    if no_empleado:
-        emp_buscado = str(no_empleado).strip()
-        # 1. Buscar primero si ya está registrado en la tabla actual del departamento
-        for emp in st.session_state.empleados:
-            if str(emp["No. Empleado"]) == emp_buscado:
-                empleado_existente_datos = emp
-                nombre_sugerido = emp["Nombre Completo"]
-                break
-        
-        # 2. Si no está en la tabla, buscar en el catálogo general
-        if not nombre_sugerido and df_catalogo is not None:
-            match_emp = df_catalogo[df_catalogo['Empleado'] == emp_buscado]
-            if not match_emp.empty:
-                nombre_sugerido = str(match_emp.iloc[0]['Nombre'])
-
-    nombre_empleado = st.text_input("Nombre Completo", value=nombre_sugerido)
+    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido)
 
 with c3:
     es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)")
@@ -180,11 +186,9 @@ cols_dias = st.columns(7)
 
 for idx, d_key in enumerate(dias_keys):
     with cols_dias[idx]:
-        # Si el empleado ya existe, precargar su horario guardado en ese día
         default_idx = 0
         if empleado_existente_datos and d_key in empleado_existente_datos:
             val_guardado = empleado_existente_datos[d_key]
-            # Limpiar etiqueta de lactancia temporalmente para buscar el índice exacto en el selectbox
             val_limpio = val_guardado.replace(" (LACTANCIA)", "")
             if val_limpio in horarios_autorizados:
                 default_idx = horarios_autorizados.index(val_limpio)
@@ -194,7 +198,6 @@ for idx, d_key in enumerate(dias_keys):
             h_sel = ajustar_horario_lactancia(h_sel)
         horarios_dias[d_key] = h_sel
 
-# Comida sugerida o precargada
 comida_base = "14:00 - 15:00"
 if empleado_existente_datos and "Hora de Comida" in empleado_existente_datos:
     comida_base = empleado_existente_datos["Hora de Comida"]
@@ -211,10 +214,10 @@ with fc3:
     horario_aviso = st.text_input("Horario de Aviso", value=h_aviso_val)
 
 if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
-    if no_empleado and nombre_empleado:
+    if nombre_seleccionado != "-- Seleccione o escriba un nombre --" and no_empleado:
         nuevo_emp = {
             "No. Empleado": no_empleado,
-            "Nombre Completo": nombre_empleado,
+            "Nombre Completo": nombre_seleccionado,
             "Hora de Comida": hora_comida_unica,
             "Fecha de Aviso": str(fecha_aviso),
             "Horario de Aviso": horario_aviso,
@@ -225,7 +228,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
             
         existente = False
         for i, emp in enumerate(st.session_state.empleados):
-            if str(emp["No. Empleado"]) == str(no_empleado):
+            if str(emp["No. Empleado"]) == str(no_empleado) or emp["Nombre Completo"] == nombre_seleccionado:
                 st.session_state.empleados[i] = nuevo_emp
                 existente = True
                 break
@@ -234,9 +237,9 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
             
         historial[departamento_seleccionado] = st.session_state.empleados
         guardar_historial(historial)
-        st.success(f"Empleado {nombre_empleado} registrado / actualizado correctamente.")
+        st.success(f"Empleado {nombre_seleccionado} registrado / actualizado correctamente.")
     else:
-        st.warning("Debe ingresar un número de empleado válido que exista en el catálogo.")
+        st.warning("Debe seleccionar un colaborador del catálogo.")
 
 # 3. Vista Previa y Exportación
 st.subheader("3. Vista Previa y Descarga del Formato Oficial")
