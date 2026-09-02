@@ -26,7 +26,6 @@ def guardar_historial(historial):
 
 st.title("Generador de Horarios Oficial - City Market")
 
-# Cargar catálogo de empleados asegurando formato texto limpio
 @st.cache_data
 def cargar_catalogo():
     try:
@@ -44,7 +43,6 @@ if df_catalogo is not None:
 else:
     lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "RECURSOS HUMANOS"]
 
-# Generar dinámicamente las 4 semanas del mes (de Miércoles a Martes)
 hoy = datetime.today().date()
 dias_hasta_miercoles = (2 - hoy.weekday()) % 7
 if dias_hasta_miercoles == 0:
@@ -80,7 +78,6 @@ with col3:
 with col4:
     fecha_entrega = st.date_input("Fecha de Entrega", datetime.today())
 
-# Cargar historial del departamento
 historial = cargar_historial()
 
 if 'depto_actual' not in st.session_state or st.session_state.depto_actual != departamento_seleccionado:
@@ -90,7 +87,6 @@ if 'depto_actual' not in st.session_state or st.session_state.depto_actual != de
     else:
         st.session_state.empleados = []
 
-# Horarios autorizados en formato de 24 horas
 horarios_autorizados = [
     "Descanso",
     "Vacaciones",
@@ -121,17 +117,14 @@ horarios_autorizados = [
 dias_keys = ["Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Lunes", "Martes"]
 
 def ajustar_horario_lactancia(horario_str):
-    """Resta una hora a la hora de salida si es un turno normal."""
     if horario_str in ["Descanso", "Vacaciones"] or " - " not in horario_str:
         return horario_str
     try:
         partes = horario_str.split(" (")
         rango = partes[0]
         tipo = f" ({partes[1]}" if len(partes) > 1 else ""
-        
         entrada, salida = rango.split(" - ")
         h_salida, m_salida = map(int, salida.split(":"))
-        
         h_salida_nueva = (h_salida - 1) % 24
         salida_ajustada = f"{h_salida_nueva:02d}:{m_salida:02d}"
         return f"{entrada} - {salida_ajustada}{tipo} (LACTANCIA)"
@@ -139,7 +132,6 @@ def ajustar_horario_lactancia(horario_str):
         return horario_str
 
 def calcular_sugerencia_comida(horario_str):
-    """Calcula sugerencia de comida 4 horas después de la entrada."""
     if horario_str in ["Descanso", "Vacaciones"] or " - " not in horario_str:
         return "14:00 - 15:00"
     try:
@@ -235,7 +227,6 @@ if st.session_state.empleados:
             ws['J4'] = no_depto_input
             ws['C5'] = str(fecha_entrega)
             
-            # Actualizar las fechas en los encabezados de la fila 7 (Columnas D a J)
             for i in range(7):
                 fecha_col = f_inicio_sel + timedelta(days=i)
                 ws.cell(row=7, column=4 + i, value=fecha_col)
@@ -246,6 +237,9 @@ if st.session_state.empleados:
                 if row_num >= 23:
                     ws.insert_rows(row_num)
                 
+                # Asignar altura de fila adecuada para que quepa el texto ajustado
+                ws.row_dimensions[row_num].height = 28
+                
                 ws.cell(row=row_num, column=2, value=emp["No. Empleado"])
                 ws.cell(row=row_num, column=3, value=emp["Nombre Completo"])
                 
@@ -253,17 +247,23 @@ if st.session_state.empleados:
                     val_horario = emp[d_key]
                     cell = ws.cell(row=row_num, column=col_idx, value=val_horario)
                     
+                    # Activar ajuste de texto (wrap text) para evitar desbordamientos
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    
                     if val_horario in ["Descanso", "Vacaciones"] or "LACTANCIA" in val_horario:
-                        cell.font = Font(name="Calibri", size=11, bold=True, color="FF000000")
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                        cell.font = Font(name="Calibri", size=9, bold=True, color="FF000000")
                     else:
-                        cell.font = Font(name="Calibri", size=10, bold=False)
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                        cell.font = Font(name="Calibri", size=8.5, bold=False)
 
-                ws.cell(row=row_num, column=11, value=emp["Hora de Comida"])
-                ws.cell(row=row_num, column=12, value=emp["Fecha de Aviso"])
-                ws.cell(row=row_num, column=13, value=emp["Horario de Aviso"])
-                
+                ws.cell(row=row_num, column=11, value=emp["Hora de Comida"]).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                ws.cell(row=row_num, column=12, value=emp["Fecha de Aviso"]).alignment = Alignment(horizontal="center", vertical="center")
+                ws.cell(row=row_num, column=13, value=emp["Horario de Aviso"]).alignment = Alignment(horizontal="center", vertical="center")
+            
+            # Auto-ajustar ancho de columnas de días (D a J) para que respiren bien los turnos
+            for col in range(4, 11):
+                col_letter = openpyxl.utils.get_column_letter(col)
+                ws.column_dimensions[col_letter].width = 16
+
             output = io.BytesIO()
             wb.save(output)
             output.seek(0)
