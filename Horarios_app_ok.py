@@ -143,72 +143,100 @@ def calcular_sugerencia_comida(horario_str):
     except:
         return "14:00 - 15:00"
 
-# 2. Gestión de Empleados
-st.subheader("2. Agregar o Editar Empleado")
+# 2. Gestión de Empleados (Fuera de form para permitir precarga fluida)
+st.subheader("2. Agregar o Modificar Empleado")
 
-with st.form("form_empleado", clear_on_submit=True):
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c1:
-        no_empleado = st.text_input("No. de Empleado")
-    with c2:
-        nombre_sugerido = ""
-        if df_catalogo is not None and no_empleado:
-            emp_buscado = str(no_empleado).strip()
+c1, c2, c3 = st.columns([1, 2, 1])
+with c1:
+    no_empleado = st.text_input("No. de Empleado")
+
+with c2:
+    nombre_sugerido = ""
+    empleado_existente_datos = None
+    
+    if no_empleado:
+        emp_buscado = str(no_empleado).strip()
+        # 1. Buscar primero si ya está registrado en la tabla actual del departamento
+        for emp in st.session_state.empleados:
+            if str(emp["No. Empleado"]) == emp_buscado:
+                empleado_existente_datos = emp
+                nombre_sugerido = emp["Nombre Completo"]
+                break
+        
+        # 2. Si no está en la tabla, buscar en el catálogo general
+        if not nombre_sugerido and df_catalogo is not None:
             match_emp = df_catalogo[df_catalogo['Empleado'] == emp_buscado]
             if not match_emp.empty:
                 nombre_sugerido = str(match_emp.iloc[0]['Nombre'])
-        nombre_empleado = st.text_input("Nombre Completo", value=nombre_sugerido)
-    with c3:
-        es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)")
 
-    st.markdown("**Horarios Autorizados por Día (Miércoles a Martes)**")
-    horarios_dias = {}
-    cols_dias = st.columns(7)
-    for idx, d_key in enumerate(dias_keys):
-        with cols_dias[idx]:
-            h_sel = st.selectbox(f"{d_key}", horarios_autorizados, key=f"h_{d_key}")
-            if es_lactancia:
-                h_sel = ajustar_horario_lactancia(h_sel)
-            horarios_dias[d_key] = h_sel
+    nombre_empleado = st.text_input("Nombre Completo", value=nombre_sugerido)
 
-    comida_sugerida_base = calcular_sugerencia_comida(horarios_dias["Miércoles"])
-    
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        hora_comida_unica = st.text_input("Hora de Comida (Única para la semana)", value=comida_sugerida_base)
-    with fc2:
-        fecha_aviso = st.date_input("Fecha de Aviso", datetime.today())
-    with fc3:
-        horario_aviso = st.text_input("Horario de Aviso")
+with c3:
+    es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)")
 
-    submitted = st.form_submit_button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary")
-    if submitted:
-        if no_empleado and nombre_empleado:
-            nuevo_emp = {
-                "No. Empleado": no_empleado,
-                "Nombre Completo": nombre_empleado,
-                "Hora de Comida": hora_comida_unica,
-                "Fecha de Aviso": str(fecha_aviso),
-                "Horario de Aviso": horario_aviso,
-                "Semana": opciones_semanas[idx_semana]
-            }
-            for d_key in dias_keys:
-                nuevo_emp[d_key] = horarios_dias[d_key]
+st.markdown("**Horarios Autorizados por Día (Miércoles a Martes)**")
+horarios_dias = {}
+cols_dias = st.columns(7)
+
+for idx, d_key in enumerate(dias_keys):
+    with cols_dias[idx]:
+        # Si el empleado ya existe, precargar su horario guardado en ese día
+        default_idx = 0
+        if empleado_existente_datos and d_key in empleado_existente_datos:
+            val_guardado = empleado_existente_datos[d_key]
+            # Limpiar etiqueta de lactancia temporalmente para buscar el índice exacto en el selectbox
+            val_limpio = val_guardado.replace(" (LACTANCIA)", "")
+            if val_limpio in horarios_autorizados:
+                default_idx = horarios_autorizados.index(val_limpio)
                 
-            existente = False
-            for i, emp in enumerate(st.session_state.empleados):
-                if str(emp["No. Empleado"]) == str(no_empleado):
-                    st.session_state.empleados[i] = nuevo_emp
-                    existente = True
-                    break
-            if not existente:
-                st.session_state.empleados.append(nuevo_emp)
-                
-            historial[departamento_seleccionado] = st.session_state.empleados
-            guardar_historial(historial)
-            st.success(f"Empleado {nombre_empleado} registrado correctamente.")
-        else:
-            st.warning("Debe ingresar un número de empleado válido que exista en el catálogo.")
+        h_sel = st.selectbox(f"{d_key}", horarios_autorizados, index=default_idx, key=f"h_{d_key}")
+        if es_lactancia:
+            h_sel = ajustar_horario_lactancia(h_sel)
+        horarios_dias[d_key] = h_sel
+
+# Comida sugerida o precargada
+comida_base = "14:00 - 15:00"
+if empleado_existente_datos and "Hora de Comida" in empleado_existente_datos:
+    comida_base = empleado_existente_datos["Hora de Comida"]
+else:
+    comida_base = calcular_sugerencia_comida(horarios_dias["Miércoles"])
+
+fc1, fc2, fc3 = st.columns(3)
+with fc1:
+    hora_comida_unica = st.text_input("Hora de Comida (Única para la semana)", value=comida_base)
+with fc2:
+    fecha_aviso = st.date_input("Fecha de Aviso", datetime.today())
+with fc3:
+    h_aviso_val = empleado_existente_datos["Horario de Aviso"] if empleado_existente_datos else ""
+    horario_aviso = st.text_input("Horario de Aviso", value=h_aviso_val)
+
+if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
+    if no_empleado and nombre_empleado:
+        nuevo_emp = {
+            "No. Empleado": no_empleado,
+            "Nombre Completo": nombre_empleado,
+            "Hora de Comida": hora_comida_unica,
+            "Fecha de Aviso": str(fecha_aviso),
+            "Horario de Aviso": horario_aviso,
+            "Semana": opciones_semanas[idx_semana]
+        }
+        for d_key in dias_keys:
+            nuevo_emp[d_key] = horarios_dias[d_key]
+            
+        existente = False
+        for i, emp in enumerate(st.session_state.empleados):
+            if str(emp["No. Empleado"]) == str(no_empleado):
+                st.session_state.empleados[i] = nuevo_emp
+                existente = True
+                break
+        if not existente:
+            st.session_state.empleados.append(nuevo_emp)
+            
+        historial[departamento_seleccionado] = st.session_state.empleados
+        guardar_historial(historial)
+        st.success(f"Empleado {nombre_empleado} registrado / actualizado correctamente.")
+    else:
+        st.warning("Debe ingresar un número de empleado válido que exista en el catálogo.")
 
 # 3. Vista Previa y Exportación
 st.subheader("3. Vista Previa y Descarga del Formato Oficial")
@@ -237,7 +265,6 @@ if st.session_state.empleados:
                 if row_num >= 23:
                     ws.insert_rows(row_num)
                 
-                # Asignar altura de fila generosa para que el tamaño 16 respire bien
                 ws.row_dimensions[row_num].height = 36
                 
                 ws.cell(row=row_num, column=2, value=emp["No. Empleado"])
@@ -258,7 +285,6 @@ if st.session_state.empleados:
                 ws.cell(row=row_num, column=12, value=emp["Fecha de Aviso"]).alignment = Alignment(horizontal="center", vertical="center")
                 ws.cell(row=row_num, column=13, value=emp["Horario de Aviso"]).alignment = Alignment(horizontal="center", vertical="center")
             
-            # Ampliar el ancho de columnas de los días para que los turnos en tamaño 16 queden perfectos
             for col in range(4, 11):
                 col_letter = openpyxl.utils.get_column_letter(col)
                 ws.column_dimensions[col_letter].width = 24
