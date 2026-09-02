@@ -41,7 +41,6 @@ df_catalogo = cargar_catalogo()
 if df_catalogo is not None:
     dept_df = df_catalogo[['Clave Departamento', 'Departamento']].drop_duplicates().reset_index(drop=True)
     lista_departamentos = dept_df['Departamento'].tolist()
-    # Lista de nombres ordenados para el buscador
     lista_nombres = sorted(df_catalogo['Nombre'].unique().tolist())
 else:
     lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "RECURSOS HUMANOS"]
@@ -147,32 +146,37 @@ def calcular_sugerencia_comida(horario_str):
     except:
         return "14:00 - 15:00"
 
-# 2. Gestión de Empleados (Búsqueda por Nombre con autocompletado de Número)
+# 2. Gestión de Empleados
 st.subheader("2. Agregar o Modificar Empleado")
+
+# Opción para cargar datos de un empleado ya registrado en la tabla de este depto
+nombres_registrados = [emp["Nombre Completo"] for emp in st.session_state.empleados]
+modo_edicion = st.selectbox("¿Deseas modificar un colaborador ya agregado en la tabla?", ["-- Nuevo colaborador --"] + nombres_registrados)
+
+datos_precargados = None
+if modo_edicion != "-- Nuevo colaborador --":
+    for emp in st.session_state.empleados:
+        if emp["Nombre Completo"] == modo_edicion:
+            datos_precargados = emp
+            break
 
 c1, c2, c3 = st.columns([2, 1, 1])
 
 with c1:
-    # Selector con opción de búsqueda nativa al escribir
-    nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres)
+    default_nombre_idx = 0
+    if datos_precargados and datos_precargados["Nombre Completo"] in lista_nombres:
+        default_nombre_idx = lista_nombres.index(datos_precargados["Nombre Completo"]) + 1
+        
+    nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres, index=default_nombre_idx if modo_edicion != "-- Nuevo colaborador --" else 0)
 
-# Buscar datos del empleado seleccionado
 no_empleado_sugerido = ""
-empleado_existente_datos = None
+if nombre_seleccionado != "-- Seleccione o escriba un nombre --" and df_catalogo is not None:
+    match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
+    if not match_cat.empty:
+        no_empleado_sugerido = str(match_cat.iloc[0]['Empleado'])
 
-if nombre_seleccionado != "-- Seleccione o escriba un nombre --":
-    # 1. Buscar número en el catálogo
-    if df_catalogo is not None:
-        match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
-        if not match_cat.empty:
-            no_empleado_sugerido = str(match_cat.iloc[0]['Empleado'])
-            
-    # 2. Buscar si ya tiene horario guardado en la tabla de este departamento para precargarlo
-    for emp in st.session_state.empleados:
-        if emp["Nombre Completo"] == nombre_seleccionado:
-            empleado_existente_datos = emp
-            no_empleado_sugerido = str(emp["No. Empleado"])
-            break
+if datos_precargados:
+    no_empleado_sugerido = datos_precargados["No. Empleado"]
 
 with c2:
     no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido)
@@ -187,8 +191,8 @@ cols_dias = st.columns(7)
 for idx, d_key in enumerate(dias_keys):
     with cols_dias[idx]:
         default_idx = 0
-        if empleado_existente_datos and d_key in empleado_existente_datos:
-            val_guardado = empleado_existente_datos[d_key]
+        if datos_precargados and d_key in datos_precargados:
+            val_guardado = datos_precargados[d_key]
             val_limpio = val_guardado.replace(" (LACTANCIA)", "")
             if val_limpio in horarios_autorizados:
                 default_idx = horarios_autorizados.index(val_limpio)
@@ -199,8 +203,8 @@ for idx, d_key in enumerate(dias_keys):
         horarios_dias[d_key] = h_sel
 
 comida_base = "14:00 - 15:00"
-if empleado_existente_datos and "Hora de Comida" in empleado_existente_datos:
-    comida_base = empleado_existente_datos["Hora de Comida"]
+if datos_precargados and "Hora de Comida" in datos_precargados:
+    comida_base = datos_precargados["Hora de Comida"]
 else:
     comida_base = calcular_sugerencia_comida(horarios_dias["Miércoles"])
 
@@ -210,7 +214,7 @@ with fc1:
 with fc2:
     fecha_aviso = st.date_input("Fecha de Aviso", datetime.today())
 with fc3:
-    h_aviso_val = empleado_existente_datos["Horario de Aviso"] if empleado_existente_datos else ""
+    h_aviso_val = datos_precargados["Horario de Aviso"] if datos_precargados else ""
     horario_aviso = st.text_input("Horario de Aviso", value=h_aviso_val)
 
 if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
@@ -238,6 +242,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
         historial[departamento_seleccionado] = st.session_state.empleados
         guardar_historial(historial)
         st.success(f"Empleado {nombre_seleccionado} registrado / actualizado correctamente.")
+        st.rerun()
     else:
         st.warning("Debe seleccionar un colaborador del catálogo.")
 
