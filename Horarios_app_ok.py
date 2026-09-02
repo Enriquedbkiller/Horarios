@@ -43,7 +43,7 @@ if df_catalogo is not None:
     lista_departamentos = dept_df['Departamento'].tolist()
     lista_nombres = sorted(df_catalogo['Nombre'].unique().tolist())
 else:
-    lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "MANTENIMIENTO"]
+    lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "COCINA", "MANTENIMIENTO"]
     lista_nombres = []
 
 hoy = datetime.today().date()
@@ -152,7 +152,6 @@ st.subheader("2. Agregar o Modificar Empleado")
 nombres_registrados = [emp["Nombre Completo"] for emp in st.session_state.empleados]
 modo_edicion = st.selectbox("¿Deseas modificar un colaborador ya agregado en la tabla?", ["-- Nuevo colaborador --"] + nombres_registrados, key="modo_edicion_select")
 
-# Si selecciona un colaborador existente, recuperamos sus datos
 datos_precargados = None
 if modo_edicion != "-- Nuevo colaborador --":
     for emp in st.session_state.empleados:
@@ -163,17 +162,19 @@ if modo_edicion != "-- Nuevo colaborador --":
 c1, c2, c3 = st.columns([2, 1, 1])
 
 with c1:
-    # Si viene de edición, fijamos el nombre; si es nuevo, permitimos elegir del catálogo
     if datos_precargados:
-        nombre_seleccionado = st.text_input("Colaborador", value=datos_precargados["Nombre Completo"], disabled=True)
-        no_emp_val = datos_precargados["No. Empleado"]
+        nombre_seleccionado = st.text_input("Colaborador", value=datos_precargados["Nombre Completo"], disabled=True, key="txt_colab_fijo")
     else:
         nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione del catálogo --"] + lista_nombres, key="select_nombre_catalogo")
-        no_emp_val = ""
-        if nombre_seleccionado != "-- Seleccione del catálogo --" and df_catalogo is not None:
-            match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
-            if not match_cat.empty:
-                no_emp_val = str(match_cat.iloc[0]['Empleado'])
+
+# Búsqueda robusta del número de empleado (tanto en la tabla como en el catálogo de Excel)
+no_emp_val = ""
+if datos_precargados:
+    no_emp_val = str(datos_precargados.get("No. Empleado", ""))
+elif nombre_seleccionado != "-- Seleccione del catálogo --" and df_catalogo is not None:
+    match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
+    if not match_cat.empty:
+        no_emp_val = str(match_cat.iloc[0]['Empleado'])
 
 with c2:
     no_empleado = st.text_input("No. de Empleado (Automático)", value=no_emp_val, key="input_no_emp_fijo")
@@ -244,7 +245,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
         st.success(f"Empleado {nombre_final} registrado / actualizado correctamente.")
         st.rerun()
     else:
-        st.warning("Debe seleccionar un colaborador válido.")
+        st.warning("Debe seleccionar un colaborador válido del catálogo o de la tabla.")
 
 # 3. Vista Previa y Exportación
 st.subheader("3. Vista Previa y Descarga del Formato Oficial")
