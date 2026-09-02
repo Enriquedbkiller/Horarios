@@ -9,7 +9,6 @@ import json
 
 st.set_page_config(page_title="Generador de Horarios - City Market", layout="wide")
 
-# Archivo local para almacenar el historial
 HISTORIAL_FILE = "historial_horarios.json"
 
 def cargar_historial():
@@ -27,12 +26,11 @@ def guardar_historial(historial):
 
 st.title("Generador de Horarios Oficial - City Market")
 
-# Cargar el catálogo de empleados con caché robusta
+# Cargar catálogo de empleados asegurando formato texto limpio
 @st.cache_data
 def cargar_catalogo():
     try:
         df = pd.read_excel("catalogo empleados.xlsx")
-        # Asegurar que la columna Empleado sea string limpia
         df['Empleado'] = df['Empleado'].astype(str).str.strip().str.replace('.0', '', regex=False)
         return df
     except Exception as e:
@@ -52,7 +50,6 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     departamento_seleccionado = st.selectbox("Seleccione el Departamento", lista_departamentos)
-    
     no_departamento = ""
     if df_catalogo is not None:
         match_dept = dept_df[dept_df['Departamento'] == departamento_seleccionado]
@@ -64,7 +61,7 @@ with col2:
 with col3:
     fecha_entrega = st.date_input("Fecha de Entrega", datetime.today())
 
-# Cargar historial
+# Cargar historial del departamento
 historial = cargar_historial()
 
 if 'depto_actual' not in st.session_state or st.session_state.depto_actual != departamento_seleccionado:
@@ -123,7 +120,7 @@ def ajustar_horario_lactancia(horario_str):
         return horario_str
 
 def calcular_sugerencia_comida(horario_str):
-    """Calcula una hora de comida sugerida exactamente 4 horas después de la entrada."""
+    """Calcula sugerencia de comida 4 horas después de la entrada (ej: 05:00 -> 09:00 - 10:00)."""
     if horario_str in ["Descanso", "Vacaciones"] or " - " not in horario_str:
         return "14:00 - 15:00"
     try:
@@ -138,78 +135,72 @@ def calcular_sugerencia_comida(horario_str):
 # 2. Gestión de Empleados
 st.subheader("2. Agregar o Editar Empleado")
 
-c1, c2, c3 = st.columns([1, 2, 1])
-with c1:
-    no_empleado = st.text_input("No. de Empleado", key="input_no_emp")
+# Usar formulario para estructurar la captura limpia
+with st.form("form_empleado", clear_on_submit=True):
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c1:
+        no_empleado = st.text_input("No. de Empleado")
+    with c2:
+        # Buscar el nombre automáticamente en base al número introducido
+        nombre_sugerido = ""
+        if df_catalogo is not None and no_empleado:
+            emp_buscado = str(no_empleado).strip()
+            match_emp = df_catalogo[df_catalogo['Empleado'] == emp_buscado]
+            if not match_emp.empty:
+                nombre_sugerido = str(match_emp.iloc[0]['Nombre'])
+        nombre_empleado = st.text_input("Nombre Completo", value=nombre_sugerido)
+    with c3:
+        es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)")
 
-with c2:
-    # Búsqueda robusta del nombre en el catálogo
-    nombre_sugerido = ""
-    if df_catalogo is not None and no_empleado:
-        emp_buscado = str(no_empleado).strip()
-        match_emp = df_catalogo[df_catalogo['Empleado'] == emp_buscado]
-        if not match_emp.empty:
-            nombre_sugerido = str(match_emp.iloc[0]['Nombre'])
+    st.markdown("**Horarios Autorizados por Día (Miércoles a Martes)**")
+    horarios_dias = {}
+    cols_dias = st.columns(7)
+    for idx, d_key in enumerate(dias_keys):
+        with cols_dias[idx]:
+            h_sel = st.selectbox(f"{d_key}", horarios_autorizados, key=f"h_{d_key}")
+            if es_lactancia:
+                h_sel = ajustar_horario_lactancia(h_sel)
+            horarios_dias[d_key] = h_sel
+
+    # Campo único de Hora de Comida institucional/general
+    # Tomamos como base sugerida la del miércoles o turno general
+    comida_sugerida_base = calcular_sugerencia_comida(horarios_dias["Miércoles"])
     
-    nombre_empleado = st.text_input("Nombre Completo", value=nombre_sugerido, key="input_nombre_emp")
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        hora_comida_unica = st.text_input("Hora de Comida (Única para la semana)", value=comida_sugerida_base)
+    with fc2:
+        fecha_aviso = st.date_input("Fecha de Aviso", datetime.today())
+    with fc3:
+        horario_aviso = st.text_input("Horario de Aviso")
 
-with c3:
-    es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)", key="input_lactancia")
-
-st.markdown("**Horarios y Comidas por Día (Miércoles a Martes)**")
-
-horarios_dias = {}
-comidas_dias = {}
-
-cols_dias = st.columns(7)
-for idx, d_key in enumerate(dias_keys):
-    with cols_dias[idx]:
-        st.markdown(f"*{d_key}*")
-        h_sel = st.selectbox(f"Turno {d_key}", horarios_autorizados, key=f"h_{d_key}")
-        
-        # Aplicar lactancia de forma automática si la casilla está marcada
-        if es_lactancia:
-            h_sel = ajustar_horario_lactancia(h_sel)
-            
-        horarios_dias[d_key] = h_sel
-        
-        # Sugerido dinámico basado en la hora de entrada de ese día
-        comida_sugerida = calcular_sugerencia_comida(h_sel)
-        comidas_dias[d_key] = st.text_input(f"Comida {d_key}", value=comida_sugerida, key=f"c_{d_key}")
-
-fc1, fc2 = st.columns(2)
-with fc1:
-    fecha_aviso = st.date_input("Fecha de Aviso", datetime.today(), key="input_f_aviso")
-with fc2:
-    horario_aviso = st.text_input("Horario de Aviso", key="input_h_aviso")
-
-if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
-    if no_empleado and nombre_empleado:
-        nuevo_emp = {
-            "No. Empleado": no_empleado,
-            "Nombre Completo": nombre_empleado,
-            "Fecha de Aviso": str(fecha_aviso),
-            "Horario de Aviso": horario_aviso,
-        }
-        for d_key in dias_keys:
-            nuevo_emp[d_key] = horarios_dias[d_key]
-            nuevo_emp[f"Comida_{d_key}"] = comidas_dias[d_key]
-            
-        existente = False
-        for i, emp in enumerate(st.session_state.empleados):
-            if str(emp["No. Empleado"]) == str(no_empleado):
-                st.session_state.empleados[i] = nuevo_emp
-                existente = True
-                break
-        if not existente:
-            st.session_state.empleados.append(nuevo_emp)
-            
-        historial[departamento_seleccionado] = st.session_state.empleados
-        guardar_historial(historial)
-        
-        st.success(f"Empleado {nombre_empleado} registrado correctamente.")
-    else:
-        st.warning("Debe ingresar el número y nombre del empleado.")
+    submitted = st.form_submit_button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary")
+    if submitted:
+        if no_empleado and nombre_empleado:
+            nuevo_emp = {
+                "No. Empleado": no_empleado,
+                "Nombre Completo": nombre_empleado,
+                "Hora de Comida": hora_comida_unica,
+                "Fecha de Aviso": str(fecha_aviso),
+                "Horario de Aviso": horario_aviso,
+            }
+            for d_key in dias_keys:
+                nuevo_emp[d_key] = horarios_dias[d_key]
+                
+            existente = False
+            for i, emp in enumerate(st.session_state.empleados):
+                if str(emp["No. Empleado"]) == str(no_empleado):
+                    st.session_state.empleados[i] = nuevo_emp
+                    existente = True
+                    break
+            if not existente:
+                st.session_state.empleados.append(nuevo_emp)
+                
+            historial[departamento_seleccionado] = st.session_state.empleados
+            guardar_historial(historial)
+            st.success(f"Empleado {nombre_empleado} registrado correctamente.")
+        else:
+            st.warning("Debe ingresar un número de empleado válido que exista en el catálogo.")
 
 # 3. Vista Previa y Exportación
 st.subheader("3. Vista Previa y Descarga del Formato Oficial")
@@ -241,15 +232,14 @@ if st.session_state.empleados:
                     val_horario = emp[d_key]
                     cell = ws.cell(row=row_num, column=col_idx, value=val_horario)
                     
-                    if val_horario in ["Descanso", "Vacaciones"]:
-                        cell.font = Font(name="Calibri", size=12, bold=True, color="FF000000")
+                    if val_horario in ["Descanso", "Vacaciones"] or "LACTANCIA" in val_horario:
+                        cell.font = Font(name="Calibri", size=11, bold=True, color="FF000000")
                         cell.alignment = Alignment(horizontal="center", vertical="center")
                     else:
                         cell.font = Font(name="Calibri", size=10, bold=False)
                         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-                comidas_resumen = " / ".join([emp.get(f"Comida_{d}", "") for d in dias_keys])
-                ws.cell(row=row_num, column=11, value=comidas_resumen)
+                ws.cell(row=row_num, column=11, value=emp["Hora de Comida"])
                 ws.cell(row=row_num, column=12, value=emp["Fecha de Aviso"])
                 ws.cell(row=row_num, column=13, value=emp["Horario de Aviso"])
                 
