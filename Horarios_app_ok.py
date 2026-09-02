@@ -152,7 +152,6 @@ st.subheader("2. Agregar o Modificar Empleado")
 nombres_registrados = [emp["Nombre Completo"] for emp in st.session_state.empleados]
 modo_edicion = st.selectbox("¿Deseas modificar un colaborador ya agregado en la tabla?", ["-- Nuevo colaborador --"] + nombres_registrados, key="modo_edicion_select")
 
-# Buscar datos del empleado seleccionado para edición o catálogo
 datos_precargados = None
 if modo_edicion != "-- Nuevo colaborador --":
     for emp in st.session_state.empleados:
@@ -169,17 +168,17 @@ with c1:
         
     nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres, index=default_nombre_idx if modo_edicion != "-- Nuevo colaborador --" else 0, key="select_nombre_colab")
 
+# Determinar el número de empleado de manera infalible
 no_empleado_sugerido = ""
-if nombre_seleccionado != "-- Seleccione o escriba un nombre --" and df_catalogo is not None:
+if datos_precargados:
+    no_empleado_sugerido = datos_precargados["No. Empleado"]
+elif nombre_seleccionado != "-- Seleccione o escriba un nombre --" and df_catalogo is not None:
     match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
     if not match_cat.empty:
         no_empleado_sugerido = str(match_cat.iloc[0]['Empleado'])
 
-if datos_precargados:
-    no_empleado_sugerido = datos_precargados["No. Empleado"]
-
 with c2:
-    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido, key="input_no_emp_auto")
+    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido, key=f"input_no_emp_{nombre_seleccionado}")
 
 with c3:
     es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)", key="chk_lactancia")
