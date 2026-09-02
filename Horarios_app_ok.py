@@ -43,7 +43,7 @@ if df_catalogo is not None:
     lista_departamentos = dept_df['Departamento'].tolist()
     lista_nombres = sorted(df_catalogo['Nombre'].unique().tolist())
 else:
-    lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "RECURSOS HUMANOS"]
+    lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "MANTENIMIENTO"]
     lista_nombres = []
 
 hoy = datetime.today().date()
@@ -66,7 +66,7 @@ st.subheader("1. Datos Generales")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    departamento_seleccionado = st.selectbox("Seleccione el Departamento", lista_departamentos)
+    departamento_seleccionado = st.selectbox("Seleccione el Departamento", lista_departamentos, key="select_depto")
     no_departamento = ""
     if df_catalogo is not None:
         match_dept = dept_df[dept_df['Departamento'] == departamento_seleccionado]
@@ -149,10 +149,10 @@ def calcular_sugerencia_comida(horario_str):
 # 2. Gestión de Empleados
 st.subheader("2. Agregar o Modificar Empleado")
 
-# Opción para cargar datos de un empleado ya registrado en la tabla de este depto
 nombres_registrados = [emp["Nombre Completo"] for emp in st.session_state.empleados]
-modo_edicion = st.selectbox("¿Deseas modificar un colaborador ya agregado en la tabla?", ["-- Nuevo colaborador --"] + nombres_registrados)
+modo_edicion = st.selectbox("¿Deseas modificar un colaborador ya agregado en la tabla?", ["-- Nuevo colaborador --"] + nombres_registrados, key="modo_edicion_select")
 
+# Buscar datos del empleado seleccionado para edición o catálogo
 datos_precargados = None
 if modo_edicion != "-- Nuevo colaborador --":
     for emp in st.session_state.empleados:
@@ -167,7 +167,7 @@ with c1:
     if datos_precargados and datos_precargados["Nombre Completo"] in lista_nombres:
         default_nombre_idx = lista_nombres.index(datos_precargados["Nombre Completo"]) + 1
         
-    nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres, index=default_nombre_idx if modo_edicion != "-- Nuevo colaborador --" else 0)
+    nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres, index=default_nombre_idx if modo_edicion != "-- Nuevo colaborador --" else 0, key="select_nombre_colab")
 
 no_empleado_sugerido = ""
 if nombre_seleccionado != "-- Seleccione o escriba un nombre --" and df_catalogo is not None:
@@ -179,10 +179,10 @@ if datos_precargados:
     no_empleado_sugerido = datos_precargados["No. Empleado"]
 
 with c2:
-    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido)
+    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido, key="input_no_emp_auto")
 
 with c3:
-    es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)")
+    es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)", key="chk_lactancia")
 
 st.markdown("**Horarios Autorizados por Día (Miércoles a Martes)**")
 horarios_dias = {}
@@ -190,14 +190,15 @@ cols_dias = st.columns(7)
 
 for idx, d_key in enumerate(dias_keys):
     with cols_dias[idx]:
-        default_idx = 0
+        default_val = "Descanso"
         if datos_precargados and d_key in datos_precargados:
-            val_guardado = datos_precargados[d_key]
-            val_limpio = val_guardado.replace(" (LACTANCIA)", "")
-            if val_limpio in horarios_autorizados:
-                default_idx = horarios_autorizados.index(val_limpio)
+            default_val = datos_precargados[d_key].replace(" (LACTANCIA)", "")
+            if default_val not in horarios_autorizados:
+                default_val = "Descanso"
                 
-        h_sel = st.selectbox(f"{d_key}", horarios_autorizados, index=default_idx, key=f"h_{d_key}")
+        default_idx = horarios_autorizados.index(default_val) if default_val in horarios_autorizados else 0
+        
+        h_sel = st.selectbox(f"{d_key}", horarios_autorizados, index=default_idx, key=f"h_{d_key}_{modo_edicion}")
         if es_lactancia:
             h_sel = ajustar_horario_lactancia(h_sel)
         horarios_dias[d_key] = h_sel
@@ -210,12 +211,12 @@ else:
 
 fc1, fc2, fc3 = st.columns(3)
 with fc1:
-    hora_comida_unica = st.text_input("Hora de Comida (Única para la semana)", value=comida_base)
+    hora_comida_unica = st.text_input("Hora de Comida (Única para la semana)", value=comida_base, key="input_comida_unica")
 with fc2:
-    fecha_aviso = st.date_input("Fecha de Aviso", datetime.today())
+    fecha_aviso = st.date_input("Fecha de Aviso", datetime.today(), key="date_aviso")
 with fc3:
     h_aviso_val = datos_precargados["Horario de Aviso"] if datos_precargados else ""
-    horario_aviso = st.text_input("Horario de Aviso", value=h_aviso_val)
+    horario_aviso = st.text_input("Horario de Aviso", value=h_aviso_val, key="input_h_aviso")
 
 if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
     if nombre_seleccionado != "-- Seleccione o escriba un nombre --" and no_empleado:
