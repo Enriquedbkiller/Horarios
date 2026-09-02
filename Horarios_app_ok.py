@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import openpyxl
-from openpyxl.styles import Font, Alignment
 import io
 import os
 import json
@@ -149,38 +148,43 @@ def calcular_sugerencia_comida(horario_str):
 # 2. Gestión de Empleados
 st.subheader("2. Agregar o Modificar Empleado")
 
-# Opciones combinadas: Colaboradores ya agregados en la tabla + Catálogo general
 nombres_tabla = [emp["Nombre Completo"] for emp in st.session_state.empleados]
 opciones_selector = ["-- Seleccionar colaborador --"] + list(dict.fromkeys(nombres_tabla + lista_nombres))
 
 colaborador_seleccionado = st.selectbox("Seleccione o busque al Colaborador por Nombre", options=opciones_selector, key="select_colab_principal")
 
-# Extraer datos si ya existe en la tabla o en el catálogo
+# Detectar datos precargados si ya está en la tabla o en el catálogo
 datos_precargados = None
-no_emp_automatico = ""
-nombre_final = ""
+no_emp_inicial = ""
 
 if colaborador_seleccionado != "-- Seleccionar colaborador --":
-    nombre_final = colaborador_seleccionado
-    # Buscar si ya está en la tabla de la sesión
     for emp in st.session_state.empleados:
         if emp["Nombre Completo"] == colaborador_seleccionado:
             datos_precargados = emp
-            no_emp_automatico = str(emp["No. Empleado"])
+            no_emp_inicial = str(emp["No. Empleado"])
             break
     
-    # Si no está en la tabla, buscar en el catálogo de Excel
-    if not no_emp_automatico and df_catalogo is not None:
+    if not no_emp_inicial and df_catalogo is not None:
         match_cat = df_catalogo[df_catalogo['Nombre'] == colaborador_seleccionado]
         if not match_cat.empty:
-            no_emp_automatico = str(match_cat.iloc[0]['Empleado'])
+            no_emp_inicial = str(match_cat.iloc[0]['Empleado'])
+
+# Sincronizar con session_state para que el número de empleado responda al selector
+if 'prev_colab' not in st.session_state:
+    st.session_state.prev_colab = ""
+
+if st.session_state.prev_colab != colaborador_seleccionado:
+    st.session_state.prev_colab = colaborador_seleccionado
+    st.session_state.input_no_emp_val = no_emp_inicial
+elif 'input_no_emp_val' not in st.session_state:
+    st.session_state.input_no_emp_val = no_emp_inicial
 
 c1, c2, c3 = st.columns([2, 1, 1])
 
 with c1:
-    st.markdown(f"**Colaborador:** {nombre_final if nombre_final else '*(Ninguno)*'}")
+    st.markdown(f"**Colaborador:** {colaborador_seleccionado if colaborador_seleccionado != '-- Seleccionar colaborador --' else '*(Ninguno)*'}")
 with c2:
-    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_emp_automatico, key="input_no_emp_definitivo")
+    no_empleado = st.text_input("No. de Empleado (Automático)", key="input_no_emp_val")
 with c3:
     es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)", key="chk_lactancia")
 
@@ -222,7 +226,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
     if colaborador_seleccionado != "-- Seleccionar colaborador --" and no_empleado:
         nuevo_emp = {
             "No. Empleado": no_empleado,
-            "Nombre Completo": nombre_final,
+            "Nombre Completo": colaborador_seleccionado,
             "Hora de Comida": hora_comida_unica,
             "Fecha de Aviso": str(fecha_aviso),
             "Horario de Aviso": horario_aviso,
@@ -233,7 +237,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
             
         existente = False
         for i, emp in enumerate(st.session_state.empleados):
-            if str(emp["No. Empleado"]) == str(no_empleado) or emp["Nombre Completo"] == nombre_final:
+            if str(emp["No. Empleado"]) == str(no_empleado) or emp["Nombre Completo"] == colaborador_seleccionado:
                 st.session_state.empleados[i] = nuevo_emp
                 existente = True
                 break
@@ -242,7 +246,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
             
         historial[departamento_seleccionado] = st.session_state.empleados
         guardar_historial(historial)
-        st.success(f"Empleado {nombre_final} registrado / actualizado correctamente.")
+        st.success(f"Empleado {colaborador_seleccionado} registrado / actualizado correctamente.")
         st.rerun()
     else:
         st.warning("Debe seleccionar un colaborador válido y verificar su número de empleado.")
