@@ -52,11 +52,13 @@ if dias_hasta_miercoles == 0:
 proximo_miercoles = hoy + timedelta(days=dias_hasta_miercoles)
 
 opciones_semanas = []
+fechas_semanas_obj = []
 for i in range(4):
     f_inicio = proximo_miercoles + timedelta(days=7 * i)
     f_fin = f_inicio + timedelta(days=6)
     label = f"Miércoles {f_inicio.strftime('%d/%m/%Y')} al Martes {f_fin.strftime('%d/%m/%Y')}"
     opciones_semanas.append(label)
+    fechas_semanas_obj.append((f_inicio, f_fin))
 
 # 1. Datos Generales
 st.subheader("1. Datos Generales")
@@ -73,7 +75,8 @@ with col1:
 with col2:
     no_depto_input = st.text_input("Número de Departamento", value=no_departamento)
 with col3:
-    semana_seleccionada = st.selectbox("Semana del Horario", opciones_semanas)
+    idx_semana = st.selectbox("Semana del Horario", range(len(opciones_semanas)), format_func=lambda x: opciones_semanas[x])
+    f_inicio_sel, f_fin_sel = fechas_semanas_obj[idx_semana]
 with col4:
     fecha_entrega = st.date_input("Fecha de Entrega", datetime.today())
 
@@ -195,7 +198,7 @@ with st.form("form_empleado", clear_on_submit=True):
                 "Hora de Comida": hora_comida_unica,
                 "Fecha de Aviso": str(fecha_aviso),
                 "Horario de Aviso": horario_aviso,
-                "Semana": semana_seleccionada
+                "Semana": opciones_semanas[idx_semana]
             }
             for d_key in dias_keys:
                 nuevo_emp[d_key] = horarios_dias[d_key]
@@ -231,6 +234,11 @@ if st.session_state.empleados:
             ws['C4'] = departamento_seleccionado
             ws['J4'] = no_depto_input
             ws['C5'] = str(fecha_entrega)
+            
+            # Actualizar las fechas en los encabezados de la fila 7 (Columnas D a J)
+            for i in range(7):
+                fecha_col = f_inicio_sel + timedelta(days=i)
+                ws.cell(row=7, column=4 + i, value=fecha_col)
             
             start_row = 9
             for idx, emp in enumerate(st.session_state.empleados):
