@@ -152,6 +152,7 @@ st.subheader("2. Agregar o Modificar Empleado")
 nombres_registrados = [emp["Nombre Completo"] for emp in st.session_state.empleados]
 modo_edicion = st.selectbox("¿Deseas modificar un colaborador ya agregado en la tabla?", ["-- Nuevo colaborador --"] + nombres_registrados, key="modo_edicion_select")
 
+# Si selecciona un colaborador existente, recuperamos sus datos
 datos_precargados = None
 if modo_edicion != "-- Nuevo colaborador --":
     for emp in st.session_state.empleados:
@@ -162,23 +163,20 @@ if modo_edicion != "-- Nuevo colaborador --":
 c1, c2, c3 = st.columns([2, 1, 1])
 
 with c1:
-    default_nombre_idx = 0
-    if datos_precargados and datos_precargados["Nombre Completo"] in lista_nombres:
-        default_nombre_idx = lista_nombres.index(datos_precargados["Nombre Completo"]) + 1
-        
-    nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione o escriba un nombre --"] + lista_nombres, index=default_nombre_idx if modo_edicion != "-- Nuevo colaborador --" else 0, key="select_nombre_colab")
-
-# Determinar el número de empleado de manera infalible
-no_empleado_sugerido = ""
-if datos_precargados:
-    no_empleado_sugerido = datos_precargados["No. Empleado"]
-elif nombre_seleccionado != "-- Seleccione o escriba un nombre --" and df_catalogo is not None:
-    match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
-    if not match_cat.empty:
-        no_empleado_sugerido = str(match_cat.iloc[0]['Empleado'])
+    # Si viene de edición, fijamos el nombre; si es nuevo, permitimos elegir del catálogo
+    if datos_precargados:
+        nombre_seleccionado = st.text_input("Colaborador", value=datos_precargados["Nombre Completo"], disabled=True)
+        no_emp_val = datos_precargados["No. Empleado"]
+    else:
+        nombre_seleccionado = st.selectbox("Buscar Colaborador por Nombre", options=["-- Seleccione del catálogo --"] + lista_nombres, key="select_nombre_catalogo")
+        no_emp_val = ""
+        if nombre_seleccionado != "-- Seleccione del catálogo --" and df_catalogo is not None:
+            match_cat = df_catalogo[df_catalogo['Nombre'] == nombre_seleccionado]
+            if not match_cat.empty:
+                no_emp_val = str(match_cat.iloc[0]['Empleado'])
 
 with c2:
-    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_empleado_sugerido, key=f"input_no_emp_{nombre_seleccionado}")
+    no_empleado = st.text_input("No. de Empleado (Automático)", value=no_emp_val, key="input_no_emp_fijo")
 
 with c3:
     es_lactancia = st.checkbox("Hora de Lactancia (-1 hr salida)", key="chk_lactancia")
@@ -217,11 +215,13 @@ with fc3:
     h_aviso_val = datos_precargados["Horario de Aviso"] if datos_precargados else ""
     horario_aviso = st.text_input("Horario de Aviso", value=h_aviso_val, key="input_h_aviso")
 
+nombre_final = datos_precargados["Nombre Completo"] if datos_precargados else nombre_seleccionado
+
 if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
-    if nombre_seleccionado != "-- Seleccione o escriba un nombre --" and no_empleado:
+    if nombre_final != "-- Seleccione del catálogo --" and no_empleado:
         nuevo_emp = {
             "No. Empleado": no_empleado,
-            "Nombre Completo": nombre_seleccionado,
+            "Nombre Completo": nombre_final,
             "Hora de Comida": hora_comida_unica,
             "Fecha de Aviso": str(fecha_aviso),
             "Horario de Aviso": horario_aviso,
@@ -232,7 +232,7 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
             
         existente = False
         for i, emp in enumerate(st.session_state.empleados):
-            if str(emp["No. Empleado"]) == str(no_empleado) or emp["Nombre Completo"] == nombre_seleccionado:
+            if str(emp["No. Empleado"]) == str(no_empleado) or emp["Nombre Completo"] == nombre_final:
                 st.session_state.empleados[i] = nuevo_emp
                 existente = True
                 break
@@ -241,10 +241,10 @@ if st.button("➕ Agregar / Actualizar Empleado en la Tabla", type="primary"):
             
         historial[departamento_seleccionado] = st.session_state.empleados
         guardar_historial(historial)
-        st.success(f"Empleado {nombre_seleccionado} registrado / actualizado correctamente.")
+        st.success(f"Empleado {nombre_final} registrado / actualizado correctamente.")
         st.rerun()
     else:
-        st.warning("Debe seleccionar un colaborador del catálogo.")
+        st.warning("Debe seleccionar un colaborador válido.")
 
 # 3. Vista Previa y Exportación
 st.subheader("3. Vista Previa y Descarga del Formato Oficial")
