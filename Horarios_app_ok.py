@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import openpyxl
 from openpyxl.styles import Font, Alignment
 import io
@@ -44,9 +44,23 @@ if df_catalogo is not None:
 else:
     lista_departamentos = ["GERENCIA", "ABARROTES", "LACTEOS", "RECURSOS HUMANOS"]
 
+# Generar dinámicamente las 4 semanas del mes (de Miércoles a Martes)
+hoy = datetime.today().date()
+dias_hasta_miercoles = (2 - hoy.weekday()) % 7
+if dias_hasta_miercoles == 0:
+    dias_hasta_miercoles = 7
+proximo_miercoles = hoy + timedelta(days=dias_hasta_miercoles)
+
+opciones_semanas = []
+for i in range(4):
+    f_inicio = proximo_miercoles + timedelta(days=7 * i)
+    f_fin = f_inicio + timedelta(days=6)
+    label = f"Miércoles {f_inicio.strftime('%d/%m/%Y')} al Martes {f_fin.strftime('%d/%m/%Y')}"
+    opciones_semanas.append(label)
+
 # 1. Datos Generales
 st.subheader("1. Datos Generales")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     departamento_seleccionado = st.selectbox("Seleccione el Departamento", lista_departamentos)
@@ -59,6 +73,8 @@ with col1:
 with col2:
     no_depto_input = st.text_input("Número de Departamento", value=no_departamento)
 with col3:
+    semana_seleccionada = st.selectbox("Semana del Horario", opciones_semanas)
+with col4:
     fecha_entrega = st.date_input("Fecha de Entrega", datetime.today())
 
 # Cargar historial del departamento
@@ -120,7 +136,7 @@ def ajustar_horario_lactancia(horario_str):
         return horario_str
 
 def calcular_sugerencia_comida(horario_str):
-    """Calcula sugerencia de comida 4 horas después de la entrada (ej: 05:00 -> 09:00 - 10:00)."""
+    """Calcula sugerencia de comida 4 horas después de la entrada."""
     if horario_str in ["Descanso", "Vacaciones"] or " - " not in horario_str:
         return "14:00 - 15:00"
     try:
@@ -135,13 +151,11 @@ def calcular_sugerencia_comida(horario_str):
 # 2. Gestión de Empleados
 st.subheader("2. Agregar o Editar Empleado")
 
-# Usar formulario para estructurar la captura limpia
 with st.form("form_empleado", clear_on_submit=True):
     c1, c2, c3 = st.columns([1, 2, 1])
     with c1:
         no_empleado = st.text_input("No. de Empleado")
     with c2:
-        # Buscar el nombre automáticamente en base al número introducido
         nombre_sugerido = ""
         if df_catalogo is not None and no_empleado:
             emp_buscado = str(no_empleado).strip()
@@ -162,8 +176,6 @@ with st.form("form_empleado", clear_on_submit=True):
                 h_sel = ajustar_horario_lactancia(h_sel)
             horarios_dias[d_key] = h_sel
 
-    # Campo único de Hora de Comida institucional/general
-    # Tomamos como base sugerida la del miércoles o turno general
     comida_sugerida_base = calcular_sugerencia_comida(horarios_dias["Miércoles"])
     
     fc1, fc2, fc3 = st.columns(3)
@@ -183,6 +195,7 @@ with st.form("form_empleado", clear_on_submit=True):
                 "Hora de Comida": hora_comida_unica,
                 "Fecha de Aviso": str(fecha_aviso),
                 "Horario de Aviso": horario_aviso,
+                "Semana": semana_seleccionada
             }
             for d_key in dias_keys:
                 nuevo_emp[d_key] = horarios_dias[d_key]
