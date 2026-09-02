@@ -237,8 +237,8 @@ if st.session_state.empleados:
                 if row_num >= 23:
                     ws.insert_rows(row_num)
                 
-                # Asignar altura de fila adecuada para que quepa el texto ajustado
-                ws.row_dimensions[row_num].height = 28
+                # Asignar altura de fila generosa para que el tamaño 16 respire bien
+                ws.row_dimensions[row_num].height = 36
                 
                 ws.cell(row=row_num, column=2, value=emp["No. Empleado"])
                 ws.cell(row=row_num, column=3, value=emp["Nombre Completo"])
@@ -247,22 +247,21 @@ if st.session_state.empleados:
                     val_horario = emp[d_key]
                     cell = ws.cell(row=row_num, column=col_idx, value=val_horario)
                     
-                    # Activar ajuste de texto (wrap text) para evitar desbordamientos
                     cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                     
                     if val_horario in ["Descanso", "Vacaciones"] or "LACTANCIA" in val_horario:
-                        cell.font = Font(name="Calibri", size=9, bold=True, color="FF000000")
+                        cell.font = Font(name="Calibri", size=16, bold=True, color="FF000000")
                     else:
-                        cell.font = Font(name="Calibri", size=8.5, bold=False)
+                        cell.font = Font(name="Calibri", size=16, bold=False)
 
                 ws.cell(row=row_num, column=11, value=emp["Hora de Comida"]).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                 ws.cell(row=row_num, column=12, value=emp["Fecha de Aviso"]).alignment = Alignment(horizontal="center", vertical="center")
                 ws.cell(row=row_num, column=13, value=emp["Horario de Aviso"]).alignment = Alignment(horizontal="center", vertical="center")
             
-            # Auto-ajustar ancho de columnas de días (D a J) para que respiren bien los turnos
+            # Ampliar el ancho de columnas de los días para que los turnos en tamaño 16 queden perfectos
             for col in range(4, 11):
                 col_letter = openpyxl.utils.get_column_letter(col)
-                ws.column_dimensions[col_letter].width = 16
+                ws.column_dimensions[col_letter].width = 24
 
             output = io.BytesIO()
             wb.save(output)
