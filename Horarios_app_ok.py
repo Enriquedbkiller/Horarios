@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import openpyxl
+from openpyxl.styles import Font, Alignment
 import io
 import os
 import json
@@ -153,7 +154,6 @@ opciones_selector = ["-- Seleccionar colaborador --"] + list(dict.fromkeys(nombr
 
 colaborador_seleccionado = st.selectbox("Seleccione o busque al Colaborador por Nombre", options=opciones_selector, key="select_colab_principal")
 
-# Detectar datos precargados si ya está en la tabla o en el catálogo
 datos_precargados = None
 no_emp_inicial = ""
 
@@ -169,7 +169,6 @@ if colaborador_seleccionado != "-- Seleccionar colaborador --":
         if not match_cat.empty:
             no_emp_inicial = str(match_cat.iloc[0]['Empleado'])
 
-# Sincronizar con session_state para que el número de empleado responda al selector
 if 'prev_colab' not in st.session_state:
     st.session_state.prev_colab = ""
 
